@@ -1,17 +1,32 @@
 import discord
 import random
+import json
+import os
 import asyncio
-from discord import client, Intents
+from discord import client, Intents, Game
 from discord.ext import commands, tasks
+from discord.ext.commands import bot
+from discord.ext.commands import has_permissions
 from itertools import cycle
+from discord.utils import get
+from discord import FFmpegPCMAudio
+from discord import TextChannel
+from youtube_dl import YoutubeDL
 
+players = {}
+queues = {}
 intents = Intents.default()
 intents.members = True
 client = discord.Client(intents = intents)
-status = cycle(['Anh','Iêu', 'Em', 'Nắm'])
+status = cycle(['Em','Thấy', 'Gì', 'Trong', 'Mắt', 'Kẻ', 'Si', 'Tình'])
+os.chdir("C:\\Users\\Admin\\Desktop\\Dev\\DisBot")
+
+
+
 
 #Prefix của con bot
-client = commands.Bot(command_prefix = '>', intents = intents)
+client = commands.Bot(command_prefix = '/', intents = intents)
+client.remove_command("help")
 
 #Kiểm tra Bot khởi động
 @client.event
@@ -21,7 +36,7 @@ async def on_ready():
     print('Bố mày sẵn sàng rồi!'.format(client))
 
 #Loop Status Bot
-@tasks.loop(seconds = 1)
+@tasks.loop(seconds = 2)
 async def change_status():
     await client.change_presence(activity = discord.Game(next(status)))
 
@@ -102,6 +117,193 @@ async def trietly(ctx):
                  'Cao sang quyền quý lắm kẻ theo , bần hàn cơ cực họ chê nghèo...']
     await ctx.send(f'{random.choice(responses)}')
     
+#Boolean queue
+def check_queue(id):
+    if queues[id] != []:
+        player = queues[id].pop(0)
+             
+    
+#Play nhạc cho Bot
+@client.command()
+async def play(ctx, url):
+    channel = ctx.message.author.voice.channel
+    voice = get(client.voice_clients, guild=ctx.guild)
+    if voice and voice.is_connected():
+        await voice.move_to(channel)
+    else:
+        voice = await channel.connect()
+    YDL_OPTIONS = {
+        'format': 'bestaudio',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
+    FFMPEG_OPTIONS = {
+        'before_options': '-reconnect 1 -reconnect_streamed 1', 'options': '-reconnect_delay_max 5' '-vn'}
+    voice = get(client.voice_clients, guild=ctx.guild)
+
+    if not voice.is_playing():
+        with YoutubeDL(YDL_OPTIONS) as ydl:
+            info = ydl.extract_info(url, download=False)
+        URL = info['url']
+        voice.play(FFmpegPCMAudio(URL, **FFMPEG_OPTIONS))
+        voice.is_playing()
+        await ctx.send('Đưa tao cái mike rô !!')
+#Bot đang chạy nhạc sẽ kh queue hàng chờ đc ( chưa code tới :)) //Update
+    else:
+        await ctx.send("Bố mày đang on da mic rồi đjt mẹ m >: (")
+        return
+    
+def start_playing(self, voice_client, player):
+    self.queue[0] = player
+    i = 0
+    while i < len(self.queue):
+        try:
+            voice_client.play(self.queue[i], after = lambda e: print('Error!!'))
+        except:
+            pass
+        i += 1
+
+@client.command()
+async def queue(ctx, url):
+    server = ctx.message.server
+    voice_client = client.voice_clients_in(server)
+    player = await voice_client.create_ytdl_player(url) 
+    if server.id in queues:
+        queues[server.id].append(player)
+    else:
+        queues[server.id] = [player]
+    await client.say('Hàng chờ nhạc : ')
+
+#Tiếp tục nhạc
+@client.command()
+async def resume(ctx):
+    voice = get(client.voice_clients, guild=ctx.guild)
+    if not voice.is_playing():
+        voice.resume()
+        await ctx.send('Tao hát tiếp đjt mẹ mày luôn nha!!')
+    else:
+        await ctx.send('Có nhạc đâu mà hát thằng lồn ?')
+
+
+#Tạm dừng nhạc
+@client.command()
+async def pause(ctx):
+    voice = get(client.voice_clients, guild=ctx.guild)
+    if voice.is_playing():
+        voice.pause()
+        await ctx.send('Giải lao lấy hơi cái đã !!')
+
+
+#Dừng nhạc ( Kết thúc nhạc )
+@client.command()
+async def stop(ctx):
+    voice = get(client.voice_clients, guild=ctx.guild)
+
+    if voice.is_playing():
+        voice.stop()
+        await ctx.send('Cặc, dí buồi hát nữa !!')
+       
+#Kiểm tra số dư tài khoản 
+@client.command()    
+async def bal(ctx):
+    await open_account(ctx.author) 
+    user = ctx.author
+    users = await get_bank_data()
+    wallet_amt = users[str(user.id)]["Tiền Mặt"]
+    bank_amt = users[str(user.id)]["Ngân Hàng"]
+    em = discord.Embed(title = f"Tài khoản của {ctx.author.name}", color = discord.Color.red())     
+    em.add_field(name = "Tiền Mặt", value = wallet_amt)
+    em.add_field(name = "Ngân Hàng", value = bank_amt)
+    await ctx.send(embed = em)
+    
+async def open_account(user):
+    users = await get_bank_data()
+    if str(user.id) in users:
+        return False
+    else:
+        users[str(user.id)] = {}
+        users[str(user.id)]["Tiền Mặt"] = 0
+        users[str(user.id)]["Ngân Hàng"] = 0
+    with open("bankbal.json","w") as f:
+        json.dump(users,f)
+    return True
+
+async def get_bank_data():
+    with open("bankbal.json","r") as f:
+        users = json.load(f)
+    return users
+
+#Cào loto lụm lúa ( Update Gambling sau này )
+@client.command()
+async def loto(ctx):
+    await open_account(ctx.author)
+    users = await get_bank_data()
+    user = ctx.author
+    earn = random.randrange(1000,500000)
+    await ctx.send(f"Tiền trên trời rơi xuống {earn} Việt Nam Đồng")
+    users[str(user.id)]["Tiền Mặt"] += earn
+    with open("bankbal.json","w") as f:
+        json.dump(users,f) 
+
+        
+#Custom khung commands
+@client.command()
+async def help(ctx):
+    user = ctx.message.author
+    embed = discord.Embed(title = "Trợ Giúp Bot", description = "Toàn bộ lệnh của Bot", color = discord.Color.red())
+    embed.set_author(name = ctx.message.guild.name, icon_url = ctx.message.guild.icon_url)
+    embed.add_field(name = "Ping", value = "Kiểm tra độ trễ Ping mạng nội bộ")
+    embed.add_field(name = "cax" , value = "abc ")
+    embed.add_field(name = "play" , value = "Phát nhạc trong voice channel.")
+    embed.add_field(name = "queue" , value = "Xem danh sách hàng chờ nhạc.")
+    await ctx.send(embed = embed)
+    
+# @client.command()
+# async def time():
+#     user = ctx.message.authenticators(discord.Member):
+        
+@client.command()
+async def oantuxi(ctx, message):
+    answer = message.lower()
+    choices = ["scissors", "rocks", "paper"]
+    computers_answer = random.choice(choices)
+    if answer not in choices:
+        await ctx.send("Biết chơi không ba ? ")
+    else:
+        if computers_answer == answer:
+            await ctx.send("Huề rồi mày ơi !!")
+        if computers_answer == "rocks":
+            if answer == "paper":
+                await ctx.send(f"Bố mày ra Búa. Thua chịu, chơi lại mày !")
+        if computers_answer == "paper":
+            if answer == "rocks":
+                await ctx.send(f"Bố mày ra Bao. Bố mày thắng rồi , thằng ngu :)))")
+        if computers_answer == "scissors":
+            if answer == "rocks":
+                await ctx.send(f"Bố mày ra Kéo. Thua chịu, chơi lại mày !")
+        if computers_answer == "rocks":
+            if answer == "scissors":
+                await ctx.send(f"Bố mày ra Búa. Bố mày thắng rồi , thằng ngu :)))")
+        if computers_answer == "paper":
+            if answer == "scissors":
+                await ctx.send(f"Bố mày ra Bao. Thua chịu, chơi lại mày !")
+        if computers_answer == "scissors":
+            if answer == "paper":
+                await ctx.send(f"Bố mày ra Kéo. Bố mày thắng rồi , thằng ngu :)))")
+                
+
     
 
-client.run('OTE4NTQ5NDIzOTcyMzE1MTM2.YbI30A.ziBGvqMQjRvpohGUYzNpxHINN-k')
+        
+
+    
+                
+ 
+client.run('OTE4NTQ5NDIzOTcyMzE1MTM2.GiCRKo.Md_1FNBruzvMruGD8l-NYI-hOwAaG1Gpw7preg')
+
+# Fix bug queue
+# Add xác nhận tuổi video
+
